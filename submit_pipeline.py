@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 
 
-def check_kfp_connection(host='http://localhost:8080'):
+def check_kfp_connection(host='http://localhost:8888'):
     """Check if KFP server is accessible."""
     try:
         client = kfp.Client(host=host)
@@ -18,7 +18,7 @@ def check_kfp_connection(host='http://localhost:8080'):
         print(f"✗ Failed to connect to Kubeflow Pipelines: {str(e)}")
         print("\nMake sure:")
         print("1. Minikube is running: minikube status")
-        print("2. Port forwarding is active: kubectl port-forward -n kubeflow svc/ml-pipeline-ui 8080:80")
+        print("2. Port forwarding is active: kubectl port-forward -n kubeflow svc/ml-pipeline 8888:8888")
         return None
 
 
