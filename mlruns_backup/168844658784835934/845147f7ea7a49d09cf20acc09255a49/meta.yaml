@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/UNI/Semester%207/MLOPs/Assignments/mlops-kubeflow-assignment/mlruns/168844658784835934/845147f7ea7a49d09cf20acc09255a49/artifacts
+end_time: 1764421400253
+entry_point_name: ''
+experiment_id: '168844658784835934'
+lifecycle_stage: active
+run_id: 845147f7ea7a49d09cf20acc09255a49
+run_name: pipeline_run_20251129_180316
+run_uuid: 845147f7ea7a49d09cf20acc09255a49
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764421396338
+status: 3
+tags: []
+user_id: haide

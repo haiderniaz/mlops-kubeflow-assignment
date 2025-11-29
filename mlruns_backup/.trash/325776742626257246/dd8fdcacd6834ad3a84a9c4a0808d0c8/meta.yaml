@@ -1,0 +1,15 @@
+artifact_uri: file:///D:/UNI/Semester%207/MLOPs/Assignments/mlops-kubeflow-assignment/mlruns/325776742626257246/dd8fdcacd6834ad3a84a9c4a0808d0c8/artifacts
+deleted_time: 1764417631624
+end_time: 1764417492261
+entry_point_name: ''
+experiment_id: '325776742626257246'
+lifecycle_stage: deleted
+run_id: dd8fdcacd6834ad3a84a9c4a0808d0c8
+run_name: pipeline_run_20251129_165804
+source_name: ''
+source_type: 4
+source_version: ''
+start_time: 1764417484720
+status: 3
+tags: []
+user_id: haide

@@ -1,0 +1,22 @@
+
+Boston Housing Price Prediction - Model Evaluation Results
+============================================================
+
+Model: Random Forest Regressor
+Test Set Size: 102 samples
+
+Performance Metrics:
+-------------------
+Root Mean Squared Error (RMSE): 2.7879
+Mean Absolute Error (MAE):      2.0152
+R² Score:                       0.8940
+Mean Squared Error (MSE):       7.7723
+Mean Absolute % Error (MAPE):   10.99%
+
+Interpretation:
+--------------
+- RMSE of 2.7879 means predictions are off by ~$2788 on average
+- R² of 0.8940 means the model explains 89.4% of the variance
+- MAPE of 10.99% indicates average percentage error
+
+============================================================

@@ -1,0 +1,7 @@
+artifact_location: mlflow-artifacts:/538964540592546902
+creation_time: 1764417574655
+experiment_id: '538964540592546902'
+last_update_time: 1764417631628
+lifecycle_stage: deleted
+name: boston pipeline
+tags: {}
