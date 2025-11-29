@@ -3,3 +3,45 @@
 .dvc/tmp/
 data/processed/
 *.lock
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Models
+models/
+
+# Results
+results/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+build/
+dist/
+*.egg-info/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kubeflow (legacy)
+components/
+pipeline.yaml
+pipelines/
