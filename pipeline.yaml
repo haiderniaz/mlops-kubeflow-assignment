@@ -1,0 +1,466 @@
+# PIPELINE DEFINITION
+# Name: boston-housing-price-prediction-pipeline
+# Description: End-to-end ML pipeline for predicting Boston housing prices using Random Forest
+# Inputs:
+#    dvc_remote_url: str [Default: '../dvc_remote']
+#    max_depth: int [Default: 10.0]
+#    n_estimators: int [Default: 100.0]
+#    random_state: int [Default: 42.0]
+#    test_size: float [Default: 0.2]
+components:
+  comp-data-extraction-component:
+    executorLabel: exec-data-extraction-component
+    inputDefinitions:
+      parameters:
+        dvc_remote_url:
+          description: URL or path to DVC remote storage
+          parameterType: STRING
+        output_data_path:
+          description: Path where extracted data will be saved
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+  comp-data-preprocessing-component:
+    executorLabel: exec-data-preprocessing-component
+    inputDefinitions:
+      parameters:
+        input_data_path:
+          description: Path to raw input data
+          parameterType: STRING
+        random_state:
+          defaultValue: 42.0
+          description: 'Random seed for reproducibility (default: 42)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        test_data_path:
+          description: Path to save test data
+          parameterType: STRING
+        test_size:
+          defaultValue: 0.2
+          description: 'Proportion of data for testing (default: 0.2)'
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        train_data_path:
+          description: Path to save training data
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRUCT
+  comp-model-evaluation-component:
+    executorLabel: exec-model-evaluation-component
+    inputDefinitions:
+      parameters:
+        metrics_output_path:
+          description: Path to save evaluation metrics (JSON)
+          parameterType: STRING
+        model_path:
+          description: Path to trained model file (.joblib)
+          parameterType: STRING
+        test_data_path:
+          description: Path to test data CSV file
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRUCT
+  comp-model-training-component:
+    executorLabel: exec-model-training-component
+    inputDefinitions:
+      parameters:
+        max_depth:
+          defaultValue: 10.0
+          description: 'Maximum depth of trees (default: 10)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        model_output_path:
+          description: Path to save trained model (.joblib)
+          parameterType: STRING
+        n_estimators:
+          defaultValue: 100.0
+          description: 'Number of trees in the forest (default: 100)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        random_state:
+          defaultValue: 42.0
+          description: 'Random seed for reproducibility (default: 42)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        train_data_path:
+          description: Path to training data CSV file
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRUCT
+deploymentSpec:
+  executors:
+    exec-data-extraction-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_extraction_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'dvc' 'pandas'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_extraction_component(\n    dvc_remote_url: str,\n    output_data_path:\
+          \ str\n) -> str:\n    \"\"\"\n    Data Extraction Component\n\n    Fetches\
+          \ the versioned dataset from DVC remote storage.\n\n    Args:\n        dvc_remote_url:\
+          \ URL or path to DVC remote storage\n        output_data_path: Path where\
+          \ extracted data will be saved\n\n    Returns:\n        str: Path to the\
+          \ extracted dataset\n    \"\"\"\n    import os\n    import subprocess\n\
+          \    import pandas as pd\n\n    # Create output directory if it doesn't\
+          \ exist\n    os.makedirs(os.path.dirname(output_data_path), exist_ok=True)\n\
+          \n    # For this implementation, we'll simulate DVC get\n    # In production,\
+          \ you would use: dvc get <repo> <path> -o <output>\n    print(f\"Extracting\
+          \ data from DVC remote: {dvc_remote_url}\")\n    print(f\"Output path: {output_data_path}\"\
+          )\n\n    # For demonstration, we're creating a sample dataset\n    # In\
+          \ production, this would fetch from actual DVC remote\n    data_url = \"\
+          http://lib.stat.cmu.edu/datasets/boston\"\n\n    try:\n        import numpy\
+          \ as np\n        raw_df = pd.read_csv(data_url, sep=r'\\s+', skiprows=22,\
+          \ header=None)\n        data = np.hstack([raw_df.values[::2, :], raw_df.values[1::2,\
+          \ :2]])\n        target = raw_df.values[1::2, 2]\n\n        feature_names\
+          \ = ['CRIM', 'ZN', 'INDUS', 'CHAS', 'NOX', 'RM', 'AGE', \n             \
+          \           'DIS', 'RAD', 'TAX', 'PTRATIO', 'B', 'LSTAT']\n        df =\
+          \ pd.DataFrame(data, columns=feature_names)\n        df['MEDV'] = target\n\
+          \n        df.to_csv(output_data_path, index=False)\n        print(f\"Data\
+          \ extracted successfully: {len(df)} rows\")\n\n    except Exception as e:\n\
+          \        print(f\"Error extracting data: {str(e)}\")\n        raise\n\n\
+          \    return output_data_path\n\n"
+        image: python:3.9
+    exec-data-preprocessing-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_preprocessing_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'numpy'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_preprocessing_component(\n    input_data_path: str,\n  \
+          \  train_data_path: str,\n    test_data_path: str,\n    test_size: float\
+          \ = 0.2,\n    random_state: int = 42\n) -> dict:\n    \"\"\"\n    Data Preprocessing\
+          \ Component\n\n    Handles cleaning, scaling, and splitting data into train/test\
+          \ sets.\n\n    Args:\n        input_data_path: Path to raw input data\n\
+          \        train_data_path: Path to save training data\n        test_data_path:\
+          \ Path to save test data\n        test_size: Proportion of data for testing\
+          \ (default: 0.2)\n        random_state: Random seed for reproducibility\
+          \ (default: 42)\n\n    Returns:\n        dict: Dictionary with paths and\
+          \ statistics\n    \"\"\"\n    import pandas as pd\n    import numpy as np\n\
+          \    from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing\
+          \ import StandardScaler\n    import os\n\n    print(f\"Loading data from:\
+          \ {input_data_path}\")\n    df = pd.read_csv(input_data_path)\n\n    # Data\
+          \ Cleaning\n    print(\"Performing data cleaning...\")\n    # Remove duplicates\n\
+          \    initial_rows = len(df)\n    df = df.drop_duplicates()\n    print(f\"\
+          Removed {initial_rows - len(df)} duplicate rows\")\n\n    # Handle missing\
+          \ values\n    missing_before = df.isnull().sum().sum()\n    df = df.dropna()\n\
+          \    print(f\"Removed {missing_before} missing values\")\n\n    # Separate\
+          \ features and target\n    X = df.drop('MEDV', axis=1)\n    y = df['MEDV']\n\
+          \n    # Split data\n    print(f\"Splitting data: {1-test_size:.0%} train,\
+          \ {test_size:.0%} test\")\n    X_train, X_test, y_train, y_test = train_test_split(\n\
+          \        X, y, test_size=test_size, random_state=random_state\n    )\n\n\
+          \    # Feature Scaling\n    print(\"Applying StandardScaler to features...\"\
+          )\n    scaler = StandardScaler()\n    X_train_scaled = scaler.fit_transform(X_train)\n\
+          \    X_test_scaled = scaler.transform(X_test)\n\n    # Convert back to DataFrame\n\
+          \    X_train_scaled = pd.DataFrame(X_train_scaled, columns=X.columns)\n\
+          \    X_test_scaled = pd.DataFrame(X_test_scaled, columns=X.columns)\n\n\
+          \    # Add target back\n    train_df = X_train_scaled.copy()\n    train_df['MEDV']\
+          \ = y_train.values\n\n    test_df = X_test_scaled.copy()\n    test_df['MEDV']\
+          \ = y_test.values\n\n    # Save processed data\n    os.makedirs(os.path.dirname(train_data_path),\
+          \ exist_ok=True)\n    os.makedirs(os.path.dirname(test_data_path), exist_ok=True)\n\
+          \n    train_df.to_csv(train_data_path, index=False)\n    test_df.to_csv(test_data_path,\
+          \ index=False)\n\n    print(f\"Training data saved: {train_data_path} ({len(train_df)}\
+          \ rows)\")\n    print(f\"Test data saved: {test_data_path} ({len(test_df)}\
+          \ rows)\")\n\n    return {\n        \"train_path\": train_data_path,\n \
+          \       \"test_path\": test_data_path,\n        \"train_samples\": len(train_df),\n\
+          \        \"test_samples\": len(test_df),\n        \"feature_count\": len(X.columns)\n\
+          \    }\n\n"
+        image: python:3.9
+    exec-model-evaluation-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_evaluation_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'numpy'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_evaluation_component(\n    model_path: str,\n    test_data_path:\
+          \ str,\n    metrics_output_path: str\n) -> dict:\n    \"\"\"\n    Model\
+          \ Evaluation Component\n\n    Loads trained model, evaluates on test set,\
+          \ and saves metrics.\n\n    Args:\n        model_path: Path to trained model\
+          \ file (.joblib)\n        test_data_path: Path to test data CSV file\n \
+          \       metrics_output_path: Path to save evaluation metrics (JSON)\n\n\
+          \    Returns:\n        dict: Dictionary containing evaluation metrics\n\
+          \    \"\"\"\n    import pandas as pd\n    import numpy as np\n    from sklearn.metrics\
+          \ import (\n        mean_squared_error, \n        r2_score, \n        mean_absolute_error,\n\
+          \        mean_absolute_percentage_error\n    )\n    import joblib\n    import\
+          \ json\n    import os\n\n    print(f\"Loading model from: {model_path}\"\
+          )\n    model = joblib.load(model_path)\n\n    print(f\"Loading test data\
+          \ from: {test_data_path}\")\n    test_df = pd.read_csv(test_data_path)\n\
+          \n    # Separate features and target\n    X_test = test_df.drop('MEDV',\
+          \ axis=1)\n    y_test = test_df['MEDV']\n\n    print(f\"Test data shape:\
+          \ {X_test.shape}\")\n\n    # Make predictions\n    print(\"Making predictions\
+          \ on test set...\")\n    y_pred = model.predict(X_test)\n\n    # Calculate\
+          \ metrics\n    rmse = np.sqrt(mean_squared_error(y_test, y_pred))\n    mae\
+          \ = mean_absolute_error(y_test, y_pred)\n    r2 = r2_score(y_test, y_pred)\n\
+          \    mape = mean_absolute_percentage_error(y_test, y_pred)\n\n    # Calculate\
+          \ additional metrics\n    mse = mean_squared_error(y_test, y_pred)\n\n \
+          \   metrics = {\n        \"rmse\": float(rmse),\n        \"mae\": float(mae),\n\
+          \        \"r2_score\": float(r2),\n        \"mape\": float(mape),\n    \
+          \    \"mse\": float(mse),\n        \"test_samples\": len(y_test),\n    \
+          \    \"predictions_mean\": float(np.mean(y_pred)),\n        \"predictions_std\"\
+          : float(np.std(y_pred)),\n        \"actual_mean\": float(np.mean(y_test)),\n\
+          \        \"actual_std\": float(np.std(y_test))\n    }\n\n    print(\"\\\
+          n\" + \"=\"*50)\n    print(\"MODEL EVALUATION RESULTS\")\n    print(\"=\"\
+          *50)\n    print(f\"Root Mean Squared Error (RMSE): {rmse:.4f}\")\n    print(f\"\
+          Mean Absolute Error (MAE): {mae:.4f}\")\n    print(f\"R\xB2 Score: {r2:.4f}\"\
+          )\n    print(f\"Mean Absolute Percentage Error (MAPE): {mape:.4f}\")\n \
+          \   print(f\"Mean Squared Error (MSE): {mse:.4f}\")\n    print(\"=\"*50)\n\
+          \n    # Save metrics to file\n    os.makedirs(os.path.dirname(metrics_output_path),\
+          \ exist_ok=True)\n    with open(metrics_output_path, 'w') as f:\n      \
+          \  json.dump(metrics, f, indent=4)\n\n    print(f\"\\nMetrics saved to:\
+          \ {metrics_output_path}\")\n\n    return metrics\n\n"
+        image: python:3.9
+    exec-model-training-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_training_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'numpy'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_training_component(\n    train_data_path: str,\n    model_output_path:\
+          \ str,\n    n_estimators: int = 100,\n    max_depth: int = 10,\n    random_state:\
+          \ int = 42\n) -> dict:\n    \"\"\"\n    Model Training Component\n\n   \
+          \ Trains a Random Forest classifier and saves the model artifact.\n\n  \
+          \  Args:\n        train_data_path: Path to training data CSV file\n    \
+          \    model_output_path: Path to save trained model (.joblib)\n        n_estimators:\
+          \ Number of trees in the forest (default: 100)\n        max_depth: Maximum\
+          \ depth of trees (default: 10)\n        random_state: Random seed for reproducibility\
+          \ (default: 42)\n\n    Returns:\n        dict: Dictionary containing model\
+          \ path and training metrics\n    \"\"\"\n    import pandas as pd\n    import\
+          \ numpy as np\n    from sklearn.ensemble import RandomForestRegressor\n\
+          \    from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error\n\
+          \    import joblib\n    import os\n\n    print(f\"Loading training data\
+          \ from: {train_data_path}\")\n    train_df = pd.read_csv(train_data_path)\n\
+          \n    # Separate features and target\n    X_train = train_df.drop('MEDV',\
+          \ axis=1)\n    y_train = train_df['MEDV']\n\n    print(f\"Training data\
+          \ shape: {X_train.shape}\")\n    print(f\"Features: {list(X_train.columns)}\"\
+          )\n\n    # Initialize and train Random Forest model\n    print(f\"Training\
+          \ Random Forest with n_estimators={n_estimators}, max_depth={max_depth}\"\
+          )\n    model = RandomForestRegressor(\n        n_estimators=n_estimators,\n\
+          \        max_depth=max_depth,\n        random_state=random_state,\n    \
+          \    n_jobs=-1,\n        verbose=1\n    )\n\n    model.fit(X_train, y_train)\n\
+          \    print(\"Model training completed!\")\n\n    # Training set predictions\
+          \ for metrics\n    y_train_pred = model.predict(X_train)\n    train_rmse\
+          \ = np.sqrt(mean_squared_error(y_train, y_train_pred))\n    train_mae =\
+          \ mean_absolute_error(y_train, y_train_pred)\n    train_r2 = r2_score(y_train,\
+          \ y_train_pred)\n\n    print(f\"Training Metrics:\")\n    print(f\"  RMSE:\
+          \ {train_rmse:.4f}\")\n    print(f\"  MAE: {train_mae:.4f}\")\n    print(f\"\
+          \  R\xB2 Score: {train_r2:.4f}\")\n\n    # Save model\n    os.makedirs(os.path.dirname(model_output_path),\
+          \ exist_ok=True)\n    joblib.dump(model, model_output_path)\n    print(f\"\
+          Model saved to: {model_output_path}\")\n\n    # Get feature importances\n\
+          \    feature_importance = dict(zip(X_train.columns, model.feature_importances_))\n\
+          \    top_features = sorted(feature_importance.items(), key=lambda x: x[1],\
+          \ reverse=True)[:5]\n    print(f\"Top 5 important features: {top_features}\"\
+          )\n\n    return {\n        \"model_path\": model_output_path,\n        \"\
+          train_rmse\": float(train_rmse),\n        \"train_mae\": float(train_mae),\n\
+          \        \"train_r2\": float(train_r2),\n        \"n_estimators\": n_estimators,\n\
+          \        \"max_depth\": max_depth,\n        \"feature_count\": len(X_train.columns)\n\
+          \    }\n\n"
+        image: python:3.9
+pipelineInfo:
+  description: End-to-end ML pipeline for predicting Boston housing prices using Random
+    Forest
+  name: boston-housing-price-prediction-pipeline
+root:
+  dag:
+    tasks:
+      data-extraction-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-extraction-component
+        inputs:
+          parameters:
+            dvc_remote_url:
+              componentInputParameter: dvc_remote_url
+            output_data_path:
+              runtimeValue:
+                constant: /data/raw/boston.csv
+        taskInfo:
+          name: Extract Data from DVC
+      data-preprocessing-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-preprocessing-component
+        dependentTasks:
+        - data-extraction-component
+        inputs:
+          parameters:
+            input_data_path:
+              taskOutputParameter:
+                outputParameterKey: Output
+                producerTask: data-extraction-component
+            random_state:
+              componentInputParameter: random_state
+            test_data_path:
+              runtimeValue:
+                constant: /data/processed/test.csv
+            test_size:
+              componentInputParameter: test_size
+            train_data_path:
+              runtimeValue:
+                constant: /data/processed/train.csv
+        taskInfo:
+          name: Preprocess & Split Data
+      model-evaluation-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-evaluation-component
+        dependentTasks:
+        - model-training-component
+        inputs:
+          parameters:
+            metrics_output_path:
+              runtimeValue:
+                constant: /metrics/evaluation_metrics.json
+            model_path:
+              runtimeValue:
+                constant: /models/random_forest_model.joblib
+            test_data_path:
+              runtimeValue:
+                constant: /data/processed/test.csv
+        taskInfo:
+          name: Evaluate Model Performance
+      model-training-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-training-component
+        dependentTasks:
+        - data-preprocessing-component
+        inputs:
+          parameters:
+            max_depth:
+              componentInputParameter: max_depth
+            model_output_path:
+              runtimeValue:
+                constant: /models/random_forest_model.joblib
+            n_estimators:
+              componentInputParameter: n_estimators
+            random_state:
+              componentInputParameter: random_state
+            train_data_path:
+              runtimeValue:
+                constant: /data/processed/train.csv
+        taskInfo:
+          name: Train Random Forest Model
+  inputDefinitions:
+    parameters:
+      dvc_remote_url:
+        defaultValue: ../dvc_remote
+        description: URL or path to DVC remote storage
+        isOptional: true
+        parameterType: STRING
+      max_depth:
+        defaultValue: 10.0
+        description: Maximum depth of decision trees
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      n_estimators:
+        defaultValue: 100.0
+        description: Number of trees in Random Forest
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      random_state:
+        defaultValue: 42.0
+        description: Random seed for reproducibility
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      test_size:
+        defaultValue: 0.2
+        description: Proportion of data for testing (0.0-1.0)
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1
