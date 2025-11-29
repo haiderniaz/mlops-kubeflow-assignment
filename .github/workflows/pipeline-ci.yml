@@ -168,7 +168,7 @@ jobs:
         
     - name: Upload Pipeline Artifacts
       if: success()
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: pipeline-outputs
         path: |
