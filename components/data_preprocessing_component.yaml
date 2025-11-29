@@ -1,0 +1,165 @@
+# PIPELINE DEFINITION
+# Name: data-preprocessing-component
+# Description: Data Preprocessing Component
+#              Handles cleaning, scaling, and splitting data into train/test sets.
+# Inputs:
+#    input_data_path: str
+#    random_state: int [Default: 42.0]
+#    test_data_path: str
+#    test_size: float [Default: 0.2]
+#    train_data_path: str
+# Outputs:
+#    Output: dict
+components:
+  comp-data-preprocessing-component:
+    executorLabel: exec-data-preprocessing-component
+    inputDefinitions:
+      parameters:
+        input_data_path:
+          description: Path to raw input data
+          parameterType: STRING
+        random_state:
+          defaultValue: 42.0
+          description: 'Random seed for reproducibility (default: 42)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        test_data_path:
+          description: Path to save test data
+          parameterType: STRING
+        test_size:
+          defaultValue: 0.2
+          description: 'Proportion of data for testing (default: 0.2)'
+          isOptional: true
+          parameterType: NUMBER_DOUBLE
+        train_data_path:
+          description: Path to save training data
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRUCT
+deploymentSpec:
+  executors:
+    exec-data-preprocessing-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_preprocessing_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'numpy'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_preprocessing_component(\n    input_data_path: str,\n  \
+          \  train_data_path: str,\n    test_data_path: str,\n    test_size: float\
+          \ = 0.2,\n    random_state: int = 42\n) -> dict:\n    \"\"\"\n    Data Preprocessing\
+          \ Component\n\n    Handles cleaning, scaling, and splitting data into train/test\
+          \ sets.\n\n    Args:\n        input_data_path: Path to raw input data\n\
+          \        train_data_path: Path to save training data\n        test_data_path:\
+          \ Path to save test data\n        test_size: Proportion of data for testing\
+          \ (default: 0.2)\n        random_state: Random seed for reproducibility\
+          \ (default: 42)\n\n    Returns:\n        dict: Dictionary with paths and\
+          \ statistics\n    \"\"\"\n    import pandas as pd\n    import numpy as np\n\
+          \    from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing\
+          \ import StandardScaler\n    import os\n\n    print(f\"Loading data from:\
+          \ {input_data_path}\")\n    df = pd.read_csv(input_data_path)\n\n    # Data\
+          \ Cleaning\n    print(\"Performing data cleaning...\")\n    # Remove duplicates\n\
+          \    initial_rows = len(df)\n    df = df.drop_duplicates()\n    print(f\"\
+          Removed {initial_rows - len(df)} duplicate rows\")\n\n    # Handle missing\
+          \ values\n    missing_before = df.isnull().sum().sum()\n    df = df.dropna()\n\
+          \    print(f\"Removed {missing_before} missing values\")\n\n    # Separate\
+          \ features and target\n    X = df.drop('MEDV', axis=1)\n    y = df['MEDV']\n\
+          \n    # Split data\n    print(f\"Splitting data: {1-test_size:.0%} train,\
+          \ {test_size:.0%} test\")\n    X_train, X_test, y_train, y_test = train_test_split(\n\
+          \        X, y, test_size=test_size, random_state=random_state\n    )\n\n\
+          \    # Feature Scaling\n    print(\"Applying StandardScaler to features...\"\
+          )\n    scaler = StandardScaler()\n    X_train_scaled = scaler.fit_transform(X_train)\n\
+          \    X_test_scaled = scaler.transform(X_test)\n\n    # Convert back to DataFrame\n\
+          \    X_train_scaled = pd.DataFrame(X_train_scaled, columns=X.columns)\n\
+          \    X_test_scaled = pd.DataFrame(X_test_scaled, columns=X.columns)\n\n\
+          \    # Add target back\n    train_df = X_train_scaled.copy()\n    train_df['MEDV']\
+          \ = y_train.values\n\n    test_df = X_test_scaled.copy()\n    test_df['MEDV']\
+          \ = y_test.values\n\n    # Save processed data\n    os.makedirs(os.path.dirname(train_data_path),\
+          \ exist_ok=True)\n    os.makedirs(os.path.dirname(test_data_path), exist_ok=True)\n\
+          \n    train_df.to_csv(train_data_path, index=False)\n    test_df.to_csv(test_data_path,\
+          \ index=False)\n\n    print(f\"Training data saved: {train_data_path} ({len(train_df)}\
+          \ rows)\")\n    print(f\"Test data saved: {test_data_path} ({len(test_df)}\
+          \ rows)\")\n\n    return {\n        \"train_path\": train_data_path,\n \
+          \       \"test_path\": test_data_path,\n        \"train_samples\": len(train_df),\n\
+          \        \"test_samples\": len(test_df),\n        \"feature_count\": len(X.columns)\n\
+          \    }\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: data-preprocessing-component
+root:
+  dag:
+    outputs:
+      parameters:
+        Output:
+          valueFromParameter:
+            outputParameterKey: Output
+            producerSubtask: data-preprocessing-component
+    tasks:
+      data-preprocessing-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-preprocessing-component
+        inputs:
+          parameters:
+            input_data_path:
+              componentInputParameter: input_data_path
+            random_state:
+              componentInputParameter: random_state
+            test_data_path:
+              componentInputParameter: test_data_path
+            test_size:
+              componentInputParameter: test_size
+            train_data_path:
+              componentInputParameter: train_data_path
+        taskInfo:
+          name: data-preprocessing-component
+  inputDefinitions:
+    parameters:
+      input_data_path:
+        description: Path to raw input data
+        parameterType: STRING
+      random_state:
+        defaultValue: 42.0
+        description: 'Random seed for reproducibility (default: 42)'
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      test_data_path:
+        description: Path to save test data
+        parameterType: STRING
+      test_size:
+        defaultValue: 0.2
+        description: 'Proportion of data for testing (default: 0.2)'
+        isOptional: true
+        parameterType: NUMBER_DOUBLE
+      train_data_path:
+        description: Path to save training data
+        parameterType: STRING
+  outputDefinitions:
+    parameters:
+      Output:
+        parameterType: STRUCT
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1

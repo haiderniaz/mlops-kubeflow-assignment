@@ -1,0 +1,116 @@
+# PIPELINE DEFINITION
+# Name: data-extraction-component
+# Description: Data Extraction Component
+#              Fetches the versioned dataset from DVC remote storage.
+# Inputs:
+#    dvc_remote_url: str
+#    output_data_path: str
+# Outputs:
+#    Output: str
+components:
+  comp-data-extraction-component:
+    executorLabel: exec-data-extraction-component
+    inputDefinitions:
+      parameters:
+        dvc_remote_url:
+          description: URL or path to DVC remote storage
+          parameterType: STRING
+        output_data_path:
+          description: Path where extracted data will be saved
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRING
+deploymentSpec:
+  executors:
+    exec-data-extraction-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - data_extraction_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'dvc' 'pandas'\
+          \  &&  python3 -m pip install --quiet --no-warn-script-location 'kfp==2.15.1'\
+          \ '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"3.9\"' && \"\
+          $0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef data_extraction_component(\n    dvc_remote_url: str,\n    output_data_path:\
+          \ str\n) -> str:\n    \"\"\"\n    Data Extraction Component\n\n    Fetches\
+          \ the versioned dataset from DVC remote storage.\n\n    Args:\n        dvc_remote_url:\
+          \ URL or path to DVC remote storage\n        output_data_path: Path where\
+          \ extracted data will be saved\n\n    Returns:\n        str: Path to the\
+          \ extracted dataset\n    \"\"\"\n    import os\n    import subprocess\n\
+          \    import pandas as pd\n\n    # Create output directory if it doesn't\
+          \ exist\n    os.makedirs(os.path.dirname(output_data_path), exist_ok=True)\n\
+          \n    # For this implementation, we'll simulate DVC get\n    # In production,\
+          \ you would use: dvc get <repo> <path> -o <output>\n    print(f\"Extracting\
+          \ data from DVC remote: {dvc_remote_url}\")\n    print(f\"Output path: {output_data_path}\"\
+          )\n\n    # For demonstration, we're creating a sample dataset\n    # In\
+          \ production, this would fetch from actual DVC remote\n    data_url = \"\
+          http://lib.stat.cmu.edu/datasets/boston\"\n\n    try:\n        import numpy\
+          \ as np\n        raw_df = pd.read_csv(data_url, sep=r'\\s+', skiprows=22,\
+          \ header=None)\n        data = np.hstack([raw_df.values[::2, :], raw_df.values[1::2,\
+          \ :2]])\n        target = raw_df.values[1::2, 2]\n\n        feature_names\
+          \ = ['CRIM', 'ZN', 'INDUS', 'CHAS', 'NOX', 'RM', 'AGE', \n             \
+          \           'DIS', 'RAD', 'TAX', 'PTRATIO', 'B', 'LSTAT']\n        df =\
+          \ pd.DataFrame(data, columns=feature_names)\n        df['MEDV'] = target\n\
+          \n        df.to_csv(output_data_path, index=False)\n        print(f\"Data\
+          \ extracted successfully: {len(df)} rows\")\n\n    except Exception as e:\n\
+          \        print(f\"Error extracting data: {str(e)}\")\n        raise\n\n\
+          \    return output_data_path\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: data-extraction-component
+root:
+  dag:
+    outputs:
+      parameters:
+        Output:
+          valueFromParameter:
+            outputParameterKey: Output
+            producerSubtask: data-extraction-component
+    tasks:
+      data-extraction-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-data-extraction-component
+        inputs:
+          parameters:
+            dvc_remote_url:
+              componentInputParameter: dvc_remote_url
+            output_data_path:
+              componentInputParameter: output_data_path
+        taskInfo:
+          name: data-extraction-component
+  inputDefinitions:
+    parameters:
+      dvc_remote_url:
+        description: URL or path to DVC remote storage
+        parameterType: STRING
+      output_data_path:
+        description: Path where extracted data will be saved
+        parameterType: STRING
+  outputDefinitions:
+    parameters:
+      Output:
+        parameterType: STRING
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1

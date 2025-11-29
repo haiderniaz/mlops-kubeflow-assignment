@@ -1,0 +1,137 @@
+# PIPELINE DEFINITION
+# Name: model-evaluation-component
+# Description: Model Evaluation Component
+#              Loads trained model, evaluates on test set, and saves metrics.
+# Inputs:
+#    metrics_output_path: str
+#    model_path: str
+#    test_data_path: str
+# Outputs:
+#    Output: dict
+components:
+  comp-model-evaluation-component:
+    executorLabel: exec-model-evaluation-component
+    inputDefinitions:
+      parameters:
+        metrics_output_path:
+          description: Path to save evaluation metrics (JSON)
+          parameterType: STRING
+        model_path:
+          description: Path to trained model file (.joblib)
+          parameterType: STRING
+        test_data_path:
+          description: Path to test data CSV file
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRUCT
+deploymentSpec:
+  executors:
+    exec-model-evaluation-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_evaluation_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'numpy'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_evaluation_component(\n    model_path: str,\n    test_data_path:\
+          \ str,\n    metrics_output_path: str\n) -> dict:\n    \"\"\"\n    Model\
+          \ Evaluation Component\n\n    Loads trained model, evaluates on test set,\
+          \ and saves metrics.\n\n    Args:\n        model_path: Path to trained model\
+          \ file (.joblib)\n        test_data_path: Path to test data CSV file\n \
+          \       metrics_output_path: Path to save evaluation metrics (JSON)\n\n\
+          \    Returns:\n        dict: Dictionary containing evaluation metrics\n\
+          \    \"\"\"\n    import pandas as pd\n    import numpy as np\n    from sklearn.metrics\
+          \ import (\n        mean_squared_error, \n        r2_score, \n        mean_absolute_error,\n\
+          \        mean_absolute_percentage_error\n    )\n    import joblib\n    import\
+          \ json\n    import os\n\n    print(f\"Loading model from: {model_path}\"\
+          )\n    model = joblib.load(model_path)\n\n    print(f\"Loading test data\
+          \ from: {test_data_path}\")\n    test_df = pd.read_csv(test_data_path)\n\
+          \n    # Separate features and target\n    X_test = test_df.drop('MEDV',\
+          \ axis=1)\n    y_test = test_df['MEDV']\n\n    print(f\"Test data shape:\
+          \ {X_test.shape}\")\n\n    # Make predictions\n    print(\"Making predictions\
+          \ on test set...\")\n    y_pred = model.predict(X_test)\n\n    # Calculate\
+          \ metrics\n    rmse = np.sqrt(mean_squared_error(y_test, y_pred))\n    mae\
+          \ = mean_absolute_error(y_test, y_pred)\n    r2 = r2_score(y_test, y_pred)\n\
+          \    mape = mean_absolute_percentage_error(y_test, y_pred)\n\n    # Calculate\
+          \ additional metrics\n    mse = mean_squared_error(y_test, y_pred)\n\n \
+          \   metrics = {\n        \"rmse\": float(rmse),\n        \"mae\": float(mae),\n\
+          \        \"r2_score\": float(r2),\n        \"mape\": float(mape),\n    \
+          \    \"mse\": float(mse),\n        \"test_samples\": len(y_test),\n    \
+          \    \"predictions_mean\": float(np.mean(y_pred)),\n        \"predictions_std\"\
+          : float(np.std(y_pred)),\n        \"actual_mean\": float(np.mean(y_test)),\n\
+          \        \"actual_std\": float(np.std(y_test))\n    }\n\n    print(\"\\\
+          n\" + \"=\"*50)\n    print(\"MODEL EVALUATION RESULTS\")\n    print(\"=\"\
+          *50)\n    print(f\"Root Mean Squared Error (RMSE): {rmse:.4f}\")\n    print(f\"\
+          Mean Absolute Error (MAE): {mae:.4f}\")\n    print(f\"R\xB2 Score: {r2:.4f}\"\
+          )\n    print(f\"Mean Absolute Percentage Error (MAPE): {mape:.4f}\")\n \
+          \   print(f\"Mean Squared Error (MSE): {mse:.4f}\")\n    print(\"=\"*50)\n\
+          \n    # Save metrics to file\n    os.makedirs(os.path.dirname(metrics_output_path),\
+          \ exist_ok=True)\n    with open(metrics_output_path, 'w') as f:\n      \
+          \  json.dump(metrics, f, indent=4)\n\n    print(f\"\\nMetrics saved to:\
+          \ {metrics_output_path}\")\n\n    return metrics\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: model-evaluation-component
+root:
+  dag:
+    outputs:
+      parameters:
+        Output:
+          valueFromParameter:
+            outputParameterKey: Output
+            producerSubtask: model-evaluation-component
+    tasks:
+      model-evaluation-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-evaluation-component
+        inputs:
+          parameters:
+            metrics_output_path:
+              componentInputParameter: metrics_output_path
+            model_path:
+              componentInputParameter: model_path
+            test_data_path:
+              componentInputParameter: test_data_path
+        taskInfo:
+          name: model-evaluation-component
+  inputDefinitions:
+    parameters:
+      metrics_output_path:
+        description: Path to save evaluation metrics (JSON)
+        parameterType: STRING
+      model_path:
+        description: Path to trained model file (.joblib)
+        parameterType: STRING
+      test_data_path:
+        description: Path to test data CSV file
+        parameterType: STRING
+  outputDefinitions:
+    parameters:
+      Output:
+        parameterType: STRUCT
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1

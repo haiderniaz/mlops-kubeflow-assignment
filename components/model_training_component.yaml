@@ -1,0 +1,170 @@
+# PIPELINE DEFINITION
+# Name: model-training-component
+# Description: Model Training Component
+#              Trains a Random Forest classifier and saves the model artifact.
+# Inputs:
+#    max_depth: int [Default: 10.0]
+#    model_output_path: str
+#    n_estimators: int [Default: 100.0]
+#    random_state: int [Default: 42.0]
+#    train_data_path: str
+# Outputs:
+#    Output: dict
+components:
+  comp-model-training-component:
+    executorLabel: exec-model-training-component
+    inputDefinitions:
+      parameters:
+        max_depth:
+          defaultValue: 10.0
+          description: 'Maximum depth of trees (default: 10)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        model_output_path:
+          description: Path to save trained model (.joblib)
+          parameterType: STRING
+        n_estimators:
+          defaultValue: 100.0
+          description: 'Number of trees in the forest (default: 100)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        random_state:
+          defaultValue: 42.0
+          description: 'Random seed for reproducibility (default: 42)'
+          isOptional: true
+          parameterType: NUMBER_INTEGER
+        train_data_path:
+          description: Path to training data CSV file
+          parameterType: STRING
+    outputDefinitions:
+      parameters:
+        Output:
+          parameterType: STRUCT
+deploymentSpec:
+  executors:
+    exec-model-training-component:
+      container:
+        args:
+        - --executor_input
+        - '{{$}}'
+        - --function_to_execute
+        - model_training_component
+        command:
+        - sh
+        - -c
+        - "\nif ! [ -x \"$(command -v pip)\" ]; then\n    python3 -m ensurepip ||\
+          \ python3 -m ensurepip --user || apt-get install python3-pip\nfi\n\nPIP_DISABLE_PIP_VERSION_CHECK=1\
+          \ python3 -m pip install --quiet --no-warn-script-location 'pandas' 'scikit-learn'\
+          \ 'joblib' 'numpy'  &&  python3 -m pip install --quiet --no-warn-script-location\
+          \ 'kfp==2.15.1' '--no-deps' 'typing-extensions>=3.7.4,<5; python_version<\"\
+          3.9\"' && \"$0\" \"$@\"\n"
+        - sh
+        - -ec
+        - 'program_path=$(mktemp -d)
+
+
+          printf "%s" "$0" > "$program_path/ephemeral_component.py"
+
+          _KFP_RUNTIME=true python3 -m kfp.dsl.executor_main                         --component_module_path                         "$program_path/ephemeral_component.py"                         "$@"
+
+          '
+        - "\nimport kfp\nfrom kfp import dsl\nfrom kfp.dsl import *\nfrom typing import\
+          \ *\n\ndef model_training_component(\n    train_data_path: str,\n    model_output_path:\
+          \ str,\n    n_estimators: int = 100,\n    max_depth: int = 10,\n    random_state:\
+          \ int = 42\n) -> dict:\n    \"\"\"\n    Model Training Component\n\n   \
+          \ Trains a Random Forest classifier and saves the model artifact.\n\n  \
+          \  Args:\n        train_data_path: Path to training data CSV file\n    \
+          \    model_output_path: Path to save trained model (.joblib)\n        n_estimators:\
+          \ Number of trees in the forest (default: 100)\n        max_depth: Maximum\
+          \ depth of trees (default: 10)\n        random_state: Random seed for reproducibility\
+          \ (default: 42)\n\n    Returns:\n        dict: Dictionary containing model\
+          \ path and training metrics\n    \"\"\"\n    import pandas as pd\n    import\
+          \ numpy as np\n    from sklearn.ensemble import RandomForestRegressor\n\
+          \    from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error\n\
+          \    import joblib\n    import os\n\n    print(f\"Loading training data\
+          \ from: {train_data_path}\")\n    train_df = pd.read_csv(train_data_path)\n\
+          \n    # Separate features and target\n    X_train = train_df.drop('MEDV',\
+          \ axis=1)\n    y_train = train_df['MEDV']\n\n    print(f\"Training data\
+          \ shape: {X_train.shape}\")\n    print(f\"Features: {list(X_train.columns)}\"\
+          )\n\n    # Initialize and train Random Forest model\n    print(f\"Training\
+          \ Random Forest with n_estimators={n_estimators}, max_depth={max_depth}\"\
+          )\n    model = RandomForestRegressor(\n        n_estimators=n_estimators,\n\
+          \        max_depth=max_depth,\n        random_state=random_state,\n    \
+          \    n_jobs=-1,\n        verbose=1\n    )\n\n    model.fit(X_train, y_train)\n\
+          \    print(\"Model training completed!\")\n\n    # Training set predictions\
+          \ for metrics\n    y_train_pred = model.predict(X_train)\n    train_rmse\
+          \ = np.sqrt(mean_squared_error(y_train, y_train_pred))\n    train_mae =\
+          \ mean_absolute_error(y_train, y_train_pred)\n    train_r2 = r2_score(y_train,\
+          \ y_train_pred)\n\n    print(f\"Training Metrics:\")\n    print(f\"  RMSE:\
+          \ {train_rmse:.4f}\")\n    print(f\"  MAE: {train_mae:.4f}\")\n    print(f\"\
+          \  R\xB2 Score: {train_r2:.4f}\")\n\n    # Save model\n    os.makedirs(os.path.dirname(model_output_path),\
+          \ exist_ok=True)\n    joblib.dump(model, model_output_path)\n    print(f\"\
+          Model saved to: {model_output_path}\")\n\n    # Get feature importances\n\
+          \    feature_importance = dict(zip(X_train.columns, model.feature_importances_))\n\
+          \    top_features = sorted(feature_importance.items(), key=lambda x: x[1],\
+          \ reverse=True)[:5]\n    print(f\"Top 5 important features: {top_features}\"\
+          )\n\n    return {\n        \"model_path\": model_output_path,\n        \"\
+          train_rmse\": float(train_rmse),\n        \"train_mae\": float(train_mae),\n\
+          \        \"train_r2\": float(train_r2),\n        \"n_estimators\": n_estimators,\n\
+          \        \"max_depth\": max_depth,\n        \"feature_count\": len(X_train.columns)\n\
+          \    }\n\n"
+        image: python:3.9
+pipelineInfo:
+  name: model-training-component
+root:
+  dag:
+    outputs:
+      parameters:
+        Output:
+          valueFromParameter:
+            outputParameterKey: Output
+            producerSubtask: model-training-component
+    tasks:
+      model-training-component:
+        cachingOptions:
+          enableCache: true
+        componentRef:
+          name: comp-model-training-component
+        inputs:
+          parameters:
+            max_depth:
+              componentInputParameter: max_depth
+            model_output_path:
+              componentInputParameter: model_output_path
+            n_estimators:
+              componentInputParameter: n_estimators
+            random_state:
+              componentInputParameter: random_state
+            train_data_path:
+              componentInputParameter: train_data_path
+        taskInfo:
+          name: model-training-component
+  inputDefinitions:
+    parameters:
+      max_depth:
+        defaultValue: 10.0
+        description: 'Maximum depth of trees (default: 10)'
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      model_output_path:
+        description: Path to save trained model (.joblib)
+        parameterType: STRING
+      n_estimators:
+        defaultValue: 100.0
+        description: 'Number of trees in the forest (default: 100)'
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      random_state:
+        defaultValue: 42.0
+        description: 'Random seed for reproducibility (default: 42)'
+        isOptional: true
+        parameterType: NUMBER_INTEGER
+      train_data_path:
+        description: Path to training data CSV file
+        parameterType: STRING
+  outputDefinitions:
+    parameters:
+      Output:
+        parameterType: STRUCT
+schemaVersion: 2.1.0
+sdkVersion: kfp-2.15.1
