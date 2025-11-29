@@ -1,0 +1,5 @@
+# DVC cache
+.dvc/cache/
+.dvc/tmp/
+data/processed/
+*.lock

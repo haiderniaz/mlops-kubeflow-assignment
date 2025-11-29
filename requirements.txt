@@ -1,0 +1,7 @@
+kfp>=2.0.0
+dvc>=3.0.0
+scikit-learn
+pandas
+numpy
+joblib
+PyYAML
